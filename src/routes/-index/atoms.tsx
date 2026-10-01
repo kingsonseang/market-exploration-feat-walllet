@@ -45,7 +45,10 @@ export const marketsAtom = (() => {
         key: '#app/index/markets',
         schema: Result.Schema({
           success: MarketArraysSchema,
-          error: RpcClientError.RpcClientError,
+          error: Schema.Union(
+            RpcClientError.RpcClientError,
+            MarketsSchema.MarketDataUnavailable,
+          ),
         }),
       }),
     )
@@ -107,6 +110,7 @@ export const marketHistoryAtom = runtime
         error: Schema.Union(
           RpcClientError.RpcClientError,
           MarketsSchema.MarketNotFound,
+          MarketsSchema.MarketDataUnavailable,
         ),
       }),
     }),

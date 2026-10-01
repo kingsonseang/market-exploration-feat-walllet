@@ -1,6 +1,7 @@
 import * as MarketsSchema from '#/api/market-schema'
 import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
+import { AlphaVantageMarketProviderLive } from './alpha-vantage-provider'
 import { MarketProvider, MarketProviderStubLive } from './market-provider'
 
 export class MarketsService extends Effect.Service<MarketsService>()(
@@ -29,6 +30,11 @@ export class MarketsService extends Effect.Service<MarketsService>()(
   },
 ) {}
 
+/** Live data. The stub below stays available for tests and offline runs. */
 export const MarketsServiceLive = MarketsService.Default.pipe(
+  Layer.provide(AlphaVantageMarketProviderLive),
+)
+
+export const MarketsServiceStub = MarketsService.Default.pipe(
   Layer.provide(MarketProviderStubLive),
 )

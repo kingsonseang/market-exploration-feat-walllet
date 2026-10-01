@@ -52,3 +52,15 @@ export class MarketNotFound extends Schema.TaggedError<MarketNotFound>()(
   { marketId: MarketId },
   HttpApiSchema.annotations({ status: 404 }),
 ) {}
+
+/**
+ * Upstream data source could not serve the request: unreachable, rate
+ * limited, or a symbol it does not cover. Declared in the shared schema
+ * module so RPC and HTTP can both report it and adapters stay free of
+ * transport-specific error types.
+ */
+export class MarketDataUnavailable extends Schema.TaggedError<MarketDataUnavailable>()(
+  'MarketDataUnavailable',
+  { symbol: Schema.String, message: Schema.String },
+  HttpApiSchema.annotations({ status: 503 }),
+) {}

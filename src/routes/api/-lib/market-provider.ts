@@ -4,12 +4,19 @@ import * as Effect from 'effect/Effect'
 import * as Layer from 'effect/Layer'
 import * as Schema from 'effect/Schema'
 
+export type MarketProviderError =
+  | MarketsSchema.MarketNotFound
+  | MarketsSchema.MarketDataUnavailable
+
 export interface MarketProviderShape {
-  readonly list: Effect.Effect<ReadonlyArray<MarketsSchema.Market>>
+  readonly list: Effect.Effect<
+    ReadonlyArray<MarketsSchema.Market>,
+    MarketsSchema.MarketDataUnavailable
+  >
   readonly history: (
     market: MarketsSchema.Market,
     period: MarketsSchema.MarketPeriod,
-  ) => Effect.Effect<MarketsSchema.MarketHistory, MarketsSchema.MarketNotFound>
+  ) => Effect.Effect<MarketsSchema.MarketHistory, MarketProviderError>
 }
 
 export class MarketProvider extends Context.Tag('MarketProvider')<

@@ -6,11 +6,15 @@ import * as MarketsSchema from './market-schema'
 export class MarketsRpc extends RpcGroup.make(
   Rpc.make('list', {
     success: Schema.Array(MarketsSchema.Market),
+    error: MarketsSchema.MarketDataUnavailable,
   }),
 
   Rpc.make('history', {
     success: MarketsSchema.MarketHistory,
-    error: MarketsSchema.MarketNotFound,
+    error: Schema.Union(
+      MarketsSchema.MarketNotFound,
+      MarketsSchema.MarketDataUnavailable,
+    ),
     payload: {
       id: MarketsSchema.MarketId,
       period: MarketsSchema.MarketPeriod,

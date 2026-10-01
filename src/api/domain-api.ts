@@ -6,16 +6,17 @@ import * as MarketsSchema from './market-schema'
 
 export class MarketsApiGroup extends HttpApiGroup.make('markets')
   .add(
-    HttpApiEndpoint.get('list', '/markets').addSuccess(
-      Schema.Array(MarketsSchema.Market),
-    ),
+    HttpApiEndpoint.get('list', '/markets')
+      .addSuccess(Schema.Array(MarketsSchema.Market))
+      .addError(MarketsSchema.MarketDataUnavailable, { status: 503 }),
   )
   .add(
     HttpApiEndpoint.get('history', '/markets/:id/history')
       .setPath(Schema.Struct({ id: MarketsSchema.MarketId }))
       .setUrlParams(Schema.Struct({ period: MarketsSchema.MarketPeriod }))
       .addSuccess(MarketsSchema.MarketHistory)
-      .addError(MarketsSchema.MarketNotFound, { status: 404 }),
+      .addError(MarketsSchema.MarketNotFound, { status: 404 })
+      .addError(MarketsSchema.MarketDataUnavailable, { status: 503 }),
   ) {}
 
 export class DomainApi extends HttpApi.make('api')

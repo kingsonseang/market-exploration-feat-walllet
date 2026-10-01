@@ -3,6 +3,7 @@ import * as HttpApiBuilder from '@effect/platform/HttpApiBuilder'
 import * as Layer from 'effect/Layer'
 import * as Effect from 'effect/Effect'
 import { MarketsService, MarketsServiceLive } from './market-service'
+import { AlphaVantageMarketProviderLive } from './alpha-vantage-provider'
 
 export const MarketsApiLive = HttpApiBuilder.group(
   DomainApi,
@@ -21,4 +22,7 @@ export const MarketsApiLive = HttpApiBuilder.group(
           return yield* markets.history(path.id, urlParams.period)
         }),
       ),
-).pipe(Layer.provide(MarketsServiceLive))
+).pipe(
+  Layer.provide(MarketsServiceLive),
+  Layer.provide(AlphaVantageMarketProviderLive),
+)

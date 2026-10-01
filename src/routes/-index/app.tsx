@@ -13,7 +13,7 @@ const bullets = [
 export function App() {
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-6">
-      <section className="flex flex-col gap-6 overflow-hidden rounded-[32px] bg-gradient-to-b from-navy-soft to-navy p-8 text-white md:p-12">
+      <section className="flex flex-col gap-6 overflow-hidden rounded-[32px] bg-linear-to-b from-navy-soft to-navy p-8 text-white md:p-12">
         <span className="text-sm font-medium tracking-wide text-white/70 uppercase">
           Market history
         </span>
