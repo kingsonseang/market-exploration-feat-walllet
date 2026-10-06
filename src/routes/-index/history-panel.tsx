@@ -77,7 +77,7 @@ function MarketSelect({
     >
       {/* Base UI cannot infer a label from a logo + name row, so the
           trigger renders the selected market itself. */}
-      <SelectTrigger className="h-auto w-full min-w-56 justify-start gap-2 rounded-2xl border-border bg-card px-3 py-2.5 shadow-xs">
+      <SelectTrigger className="h-auto w-full min-w-56 justify-start gap-2 rounded-2xl border-border bg-surface px-3 py-2.5">
         <SelectValue placeholder="Explore a market">
           {selected === undefined ? null : (
             <>
@@ -87,7 +87,10 @@ function MarketSelect({
           )}
         </SelectValue>
       </SelectTrigger>
-      <SelectContent align="start" className="min-w-64">
+      <SelectContent
+        align="start"
+        className="min-w-64 duration-150 ease-(--ease-out)"
+      >
         <SelectGroup>
           {markets.map((market) => (
             <SelectItem key={market.id} value={market.id}>
@@ -121,7 +124,7 @@ function Controls({
         <label className="text-sm font-medium" htmlFor="investment-amount">
           If I had invested
         </label>
-        <div className="flex items-center gap-1 rounded-2xl border border-border bg-muted px-3 py-2 focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/20">
+        <div className="flex max-w-sm items-center gap-1 rounded-2xl border border-border bg-muted px-3 py-2 transition-[border-color,box-shadow] duration-150 ease-(--ease-out) focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/20">
           <span className="text-sm font-medium text-muted-foreground">USD</span>
           <AmountInput
             id="investment-amount"
@@ -147,9 +150,9 @@ function Controls({
               onClick={() => onPeriodChange(option)}
               aria-pressed={period === option}
               className={cn(
-                'rounded-full px-4 py-1.5 text-sm font-medium transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/30',
+                'rounded-full px-4 py-1.5 text-sm font-medium outline-none transition-[color,background-color,transform] duration-150 ease-(--ease-out) active:scale-[0.97] focus-visible:ring-3 focus-visible:ring-ring/30',
                 period === option
-                  ? 'bg-card text-foreground shadow-xs'
+                  ? 'bg-card text-foreground'
                   : 'text-muted-foreground hover:text-foreground',
               )}
             >
