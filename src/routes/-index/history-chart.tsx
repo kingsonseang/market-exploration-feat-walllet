@@ -266,7 +266,7 @@ export function HistoryChart({
             <span className="text-muted-foreground">
               {shortDate.format(new Date(`${active.date}T00:00:00Z`))}
             </span>
-            <strong className="font-display tabular-nums">
+            <strong className="font-bold tabular-nums">
               {usd.format(active.value)}
             </strong>
           </div>

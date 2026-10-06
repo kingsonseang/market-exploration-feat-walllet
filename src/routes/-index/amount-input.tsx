@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { cn } from 'cn'
 
 const displayFormat = new Intl.NumberFormat('en-US', {
+  minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 })
 
@@ -15,13 +16,18 @@ const parseAmount = (text: string): number | undefined => {
   return Number.isFinite(parsed) ? parsed : undefined
 }
 
-// Borderless display-style amount input. No visible bounds by design:
-// it should read as a figure, not a form field.
+/**
+ * Borderless amount field: the surrounding box draws the affordance, so the
+ * input itself reads as a figure rather than a form control. Onest 700 with
+ * tabular numerals keeps digits from shifting as the value changes.
+ */
 export function AmountInput({
+  id,
   value,
   onChange,
   className,
 }: {
+  id?: string
   value: number
   onChange: (value: number) => void
   className?: string
@@ -30,6 +36,7 @@ export function AmountInput({
 
   return (
     <input
+      id={id}
       inputMode="decimal"
       aria-label="Amount in dollars"
       value={text}
@@ -40,7 +47,7 @@ export function AmountInput({
       }}
       onBlur={() => setText(formatAmount(value))}
       className={cn(
-        'w-full border-0 bg-transparent font-display text-4xl font-bold tabular-nums outline-none placeholder:text-muted-foreground',
+        'w-full border-0 bg-transparent text-2xl font-bold tracking-[-0.02em] tabular-nums outline-none',
         className,
       )}
     />

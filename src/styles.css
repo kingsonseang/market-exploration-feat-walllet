@@ -2,7 +2,6 @@
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 @import '@fontsource-variable/onest';
-@import '@fontsource-variable/oxanium';
 
 * {
   box-sizing: border-box;
@@ -21,7 +20,6 @@ body {
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: 'Onest Variable', sans-serif;
-  --font-display: 'Oxanium Variable', sans-serif;
   --color-navy-soft: var(--navy-soft);
   --color-navy: var(--navy);
   --color-sidebar-ring: var(--sidebar-ring);
