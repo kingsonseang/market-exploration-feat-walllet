@@ -37,9 +37,14 @@ const WeeklyAdjustedResponse = Schema.Struct({
   'Weekly Adjusted Time Series': PriceSeries('5. adjusted close'),
 })
 
-/** Legacy shape for crypto, which has no adjusted weekly series. */
-const DigitalCurrencyResponse = Schema.Struct({
-  'Time Series (Digital Currency Weekly)': PriceSeries('4. close'),
+/**
+ * Crypto has no adjusted weekly series on the free tier, so it uses the
+ * unadjusted endpoint, whose series key is 'Weekly Time Series' (not the
+ * 'Time Series (Digital Currency Weekly)' shape the digital-currency
+ * endpoint uses).
+ */
+const CryptoWeeklyResponse = Schema.Struct({
+  'Weekly Time Series': PriceSeries('4. close'),
 })
 
 const GlobalQuoteResponse = Schema.Struct({
@@ -178,9 +183,7 @@ const assertNotProviderError = (json: unknown, symbol: string) =>
         ? (json as Record<string, unknown>)
         : {}
     const reason =
-      asRecord['Note'] ??
-      asRecord['Information'] ??
-      asRecord['Error Message']
+      asRecord['Note'] ?? asRecord['Information'] ?? asRecord['Error Message']
     if (typeof reason === 'string') {
       return yield* new MarketsSchema.MarketDataUnavailable({
         symbol,
@@ -265,10 +268,8 @@ export const AlphaVantageMarketProviderLive = Layer.effect(
     const requestJson = (
       symbol: string,
       params: Record<string, string>,
-    ): Effect.Effect<
-      unknown,
-      MarketsSchema.MarketDataUnavailable
-    > => getJson(symbol, params).pipe(Effect.delay(MinRequestSpacing))
+    ): Effect.Effect<unknown, MarketsSchema.MarketDataUnavailable> =>
+      getJson(symbol, params).pipe(Effect.delay(MinRequestSpacing))
 
     const fetchMarkets: Effect.Effect<
       ReadonlyArray<MarketsSchema.Market>,
@@ -344,9 +345,7 @@ export const AlphaVantageMarketProviderLive = Layer.effect(
 
         const series = isCrypto
           ? toPriceMap(
-              decodeWith(json, DigitalCurrencyResponse)?.[
-                'Time Series (Digital Currency Weekly)'
-              ],
+              decodeWith(json, CryptoWeeklyResponse)?.['Weekly Time Series'],
               (v) => v['4. close'],
             )
           : toPriceMap(
