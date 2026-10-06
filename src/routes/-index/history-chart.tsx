@@ -1,21 +1,32 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ReferenceDot,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
 import { cn } from 'cn'
 import type * as MarketsSchema from '#/api/market-schema'
 
 /**
- * Hand-rolled SVG price chart. Ported from the prototype demo: the path,
- * baseline, grid and cursor geometry are the same, but the data comes from
- * `points` rather than any bundled dataset.
+ * Investment-value chart.
  *
- * The curve plots the *value of the investment over time* (principal
- * rebased to each point's price ratio), not raw price, so the baseline at
- * the starting principal is meaningful.
+ * The curve plots the *value of the investment over time* (principal rebased
+ * against each historical price), not raw price, so the reference line at the
+ * starting principal is meaningful. `simulate` already produces that rebased
+ * series, so one array drives the line, the axis and the readout.
+ *
+ * Recharts' built-in draw-in is disabled deliberately. It re-fires whenever
+ * `data` changes, and `data` changes on every keystroke in the amount field —
+ * that would animate the data the user is reading. Instead the whole chart
+ * fades in once per `seriesKey` (market + period), which is the only change
+ * worth marking.
  */
-
-const VIEW_W = 620
-const VIEW_H = 204
-const PLOT_PAD = 12
-const AXIS_LABEL_X = 677
 
 const usd = new Intl.NumberFormat('en-US', {
   style: 'currency',
@@ -50,115 +61,123 @@ const tickDate = new Intl.DateTimeFormat('en-US', {
   timeZone: 'UTC',
 })
 
-interface PlotPoint {
-  readonly x: number
-  readonly y: number
-  readonly date: string
+const toMs = (iso: string): number => Date.parse(`${iso}T00:00:00Z`)
+
+interface Row extends MarketsSchema.PricePoint {
+  readonly ms: number
   readonly value: number
 }
 
-interface Geometry {
-  readonly plot: ReadonlyArray<PlotPoint>
-  readonly linePath: string
-  readonly areaPath: string
-  readonly baselineY: number
-  readonly min: number
-  readonly max: number
-  readonly startMs: number
-  readonly endMs: number
-}
+/**
+ * Evenly spaced x-axis labels, as data-key values (a category axis matches
+ * `ticks` against the data, not against indexes).
+ */
+const dateTicks = (rows: ReadonlyArray<Row>): ReadonlyArray<string> =>
+  [0, 0.25, 0.5, 0.75, 1].map(
+    (t) => rows[Math.round((rows.length - 1) * t)].date,
+  )
 
-/** Investment value at each point, rebased to the starting principal. */
-const valueSeries = (
-  points: ReadonlyArray<MarketsSchema.PricePoint>,
-  principal: number,
-): ReadonlyArray<number> => {
-  const base = points[0]?.price ?? 0
-  if (base <= 0) return []
-  return points.map((p) => (p.price / base) * principal)
-}
-
-const buildGeometry = (
-  points: ReadonlyArray<MarketsSchema.PricePoint>,
-  principal: number,
-): Geometry | undefined => {
-  if (points.length < 2) return undefined
-  const values = valueSeries(points, principal)
-  if (values.length < 2) return undefined
-
-  // The principal itself is part of the domain: a curve that only
-  // wanders below it is meaningless without the break-even line.
-  const lower = Math.min(...values, principal)
-  const upper = Math.max(...values, principal)
-  const padding = Math.max((upper - lower) * 0.12, 1)
-  const min = Math.max(0, lower - padding)
-  const max = upper + padding
-
-  const startMs = Date.parse(`${points[0].date}T00:00:00Z`)
-  const endMs = Date.parse(`${points.at(-1)?.date}T00:00:00Z`)
-  if (
-    !Number.isFinite(startMs) ||
-    !Number.isFinite(endMs) ||
-    endMs === startMs
-  ) {
-    return undefined
+/**
+ * X-axis tick renderer. The first and last labels anchor inward so neither is
+ * clipped by the plot edge — the alternative was padding the axis, which
+ * would pull the curve away from the panel's own edges. The middle labels are
+ * dropped on a narrow chart because the dates are fixed-width and overlap
+ * before Recharts' own gap logic notices.
+ */
+function ChartTick({
+  x,
+  y,
+  payload,
+  labels,
+  compact,
+}: {
+  readonly x?: number
+  readonly y?: number
+  readonly payload?: { readonly value?: string }
+  readonly labels: ReadonlyArray<string>
+  readonly compact: boolean
+}) {
+  const value = payload?.value
+  if (typeof x !== 'number' || typeof y !== 'number' || value === undefined) {
+    return null
   }
-  const span = endMs - startMs
 
-  const plot: ReadonlyArray<PlotPoint> = points.flatMap((point, i) => {
-    const value = values[i]
-    if (!value) return []
-    return [
-      {
-        x: ((Date.parse(`${point.date}T00:00:00Z`) - startMs) / span) * VIEW_W,
-        y: PLOT_PAD + ((max - value) / (max - min)) * VIEW_H,
-        date: point.date,
-        value,
-      },
-    ]
-  })
-  if (plot.length < 2) return undefined
+  const isFirst = value === labels[0]
+  const isLast = value === labels.at(-1)
+  const isQuarterly = labels.indexOf(value) % 2 === 1
 
-  const linePath = plot
-    .map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(2)},${p.y.toFixed(2)}`)
-    .join(' ')
+  if (compact && isQuarterly) return null
 
-  return {
-    plot,
-    linePath,
-    areaPath: `${linePath} L${VIEW_W},${PLOT_PAD + VIEW_H} L0,${PLOT_PAD + VIEW_H} Z`,
-    baselineY: PLOT_PAD + ((max - principal) / (max - min)) * VIEW_H,
-    min,
-    max,
-    startMs,
-    endMs,
-  }
+  return (
+    <text
+      x={x}
+      y={y + 12}
+      textAnchor={isFirst ? 'start' : isLast ? 'end' : 'middle'}
+      fill="var(--muted-foreground)"
+      fontSize={11}
+    >
+      {tickDate.format(toMs(value))}
+    </text>
+  )
 }
-
-const GRID_STOPS = [0, 0.5, 1] as const
-const DATE_STOPS = [0, 0.25, 0.5, 0.75, 1] as const
 
 export function HistoryChart({
   points,
+  values,
   principal,
   marketName,
+  seriesKey,
   className,
 }: {
   points: ReadonlyArray<MarketsSchema.PricePoint>
+  /** Rebased series from `simulate`, same length and order as `points`. */
+  values: ReadonlyArray<number>
   principal: number
   marketName: string
+  /** Identity of the underlying series; a change re-runs the entrance. */
+  seriesKey: string
   className?: string
 }) {
-  const geometry = useMemo(
-    () => buildGeometry(points, principal),
-    [points, principal],
-  )
   const [cursor, setCursor] = useState<number | undefined>(undefined)
+  const [compact, setCompact] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
 
-  // A shorter series (period change) must not leave a stale cursor.
-  useEffect(() => setCursor(undefined), [points])
+  /** `values` comes from `simulate`, which returns one entry per point. */
+  const rows = useMemo<ReadonlyArray<Row>>(
+    () =>
+      points.map((point, i) => ({
+        ...point,
+        ms: toMs(point.date),
+        value: values[i],
+      })),
+    [points, values],
+  )
 
-  if (geometry === undefined) {
+  // The principal is part of the domain: a curve that only wanders below it is
+  // meaningless without the break-even line.
+  const domain = useMemo(() => {
+    if (rows.length === 0) return undefined
+    const low = Math.min(...rows.map((r) => r.value), principal)
+    const high = Math.max(...rows.map((r) => r.value), principal)
+    const pad = Math.max((high - low) * 0.12, 1)
+    return [Math.max(0, low - pad), high + pad] as const
+  }, [rows, principal])
+
+  // A shorter series (period or market change) must not leave a stale cursor.
+  useEffect(() => setCursor(undefined), [rows])
+
+  // Below this width the five date labels overlap, so drop to three.
+  useEffect(() => {
+    const element = containerRef.current
+    if (element === null) return
+    const observer = new ResizeObserver(([entry]) => {
+      setCompact(entry.contentRect.width < 420)
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+
+  if (rows.length < 2 || domain === undefined) {
     return (
       <div className={cn('flex h-60 items-center justify-center', className)}>
         <p className="text-sm text-muted-foreground">
@@ -168,109 +187,136 @@ export function HistoryChart({
     )
   }
 
-  const { plot, linePath, areaPath, baselineY, min, max, startMs, endMs } =
-    geometry
-  const active = cursor === undefined ? undefined : plot[cursor]
-  const last = plot.at(-1)
+  const startMs = rows[0].ms
+  const endMs = rows[rows.length - 1].ms
+  const last: Row = rows[rows.length - 1]
+  const active: Row | undefined =
+    cursor === undefined ? undefined : rows[cursor]
 
   const summary = `${marketName}: ${usd.format(principal)} invested on ${longDate.format(
     new Date(startMs),
-  )} became ${usd.format(plot.at(-1)?.value ?? 0)} as of ${longDate.format(
-    new Date(endMs),
-  )}.`
+  )} became ${usd.format(last.value)} as of ${longDate.format(new Date(endMs))}.`
+
+  const tick = { fill: 'var(--muted-foreground)', fontSize: 11 }
 
   return (
-    <div className={cn('flex flex-col gap-2', className)}>
-      <div className="relative">
-        <svg
-          viewBox={`0 0 ${AXIS_LABEL_X + 8} ${PLOT_PAD + VIEW_H + 4}`}
-          role="img"
-          aria-label={summary}
-          className="w-full overflow-visible"
-          onPointerMove={(event) => {
-            const rect = event.currentTarget.getBoundingClientRect()
-            const x = ((event.clientX - rect.left) / rect.width) * AXIS_LABEL_X
-            const ratio = Math.min(1, Math.max(0, x / VIEW_W))
-            const index = Math.round(ratio * (plot.length - 1))
-            setCursor(index)
-          }}
-          onPointerLeave={() => setCursor(undefined)}
-        >
-          <defs>
-            <linearGradient id="value-fill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="var(--chart-1)" stopOpacity="0.22" />
-              <stop offset="100%" stopColor="var(--chart-1)" stopOpacity="0" />
-            </linearGradient>
-          </defs>
-
-          {GRID_STOPS.map((t) => {
-            const y = PLOT_PAD + t * VIEW_H
-            const value = max - t * (max - min)
-            return (
-              <g key={t}>
-                <path
-                  d={`M0 ${y} H${VIEW_W}`}
-                  stroke="var(--border)"
-                  strokeDasharray="3 5"
-                />
-                <text
-                  x={AXIS_LABEL_X}
-                  y={y + 4}
-                  textAnchor="end"
-                  className="fill-muted-foreground text-[11px]"
-                >
-                  {usdCompact.format(value)}
-                </text>
-              </g>
-            )
-          })}
-
-          <path d={areaPath} fill="url(#value-fill)" />
-          <path
-            d={linePath}
-            fill="none"
-            stroke="var(--chart-1)"
-            strokeWidth={2}
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
-          <path
-            d={`M0,${baselineY} H${VIEW_W}`}
-            stroke="var(--muted-foreground)"
-            strokeWidth={1}
-          />
-          {last !== undefined ? (
-            <circle cx={last.x} cy={last.y} r={4} fill="var(--chart-1)" />
-          ) : null}
-
-          {active !== undefined ? (
-            <g>
-              <path
-                d={`M${active.x},0 V${PLOT_PAD + VIEW_H}`}
-                stroke="var(--border)"
-              />
-              <circle cx={active.x} cy={active.y} r={4} fill="var(--chart-1)" />
-            </g>
-          ) : null}
-        </svg>
-
-        {active !== undefined ? (
-          <div
-            role="status"
-            className="pointer-events-none absolute flex flex-col rounded-xl bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md ring-1 ring-foreground/10"
-            style={{
-              left: `${Math.max(4, Math.min(72, (active.x / VIEW_W) * 100))}%`,
-              top: `${Math.max(0, (active.y / (PLOT_PAD + VIEW_H)) * 100 - 12)}%`,
-            }}
+    <div className={cn('chart-enter flex flex-col', className)} key={seriesKey}>
+      <div className="relative h-60 w-full" ref={containerRef}>
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart
+            data={[...rows]}
+            margin={{ top: 8, right: 8, bottom: 4, left: 8 }}
           >
-            <span className="text-muted-foreground">
-              {shortDate.format(new Date(`${active.date}T00:00:00Z`))}
-            </span>
-            <strong className="font-bold tabular-nums">
-              {usd.format(active.value)}
-            </strong>
-          </div>
-        ) : null}
+            <defs>
+              <linearGradient id="value-fill" x1="0" y1="0" x2="0" y2="1">
+                <stop
+                  offset="0%"
+                  stopColor="var(--chart-1)"
+                  stopOpacity={0.22}
+                />
+                <stop
+                  offset="100%"
+                  stopColor="var(--chart-1)"
+                  stopOpacity={0}
+                />
+              </linearGradient>
+            </defs>
+
+            <CartesianGrid
+              vertical={false}
+              stroke="var(--border)"
+              strokeDasharray="3 5"
+            />
+            {/* Category axis on the ISO date: five evenly spaced ticks, which
+                is what the demo showed. A numeric time axis would place ticks
+                by real elapsed time and pull the first label out of view. */}
+            <XAxis
+              dataKey="date"
+              ticks={dateTicks(rows)}
+              tick={
+                // First and last labels anchor inward so neither is clipped
+                // by the plot edge; the curve still spans the full width.
+                <ChartTick labels={dateTicks(rows)} compact={compact} />
+              }
+              axisLine={false}
+              tickLine={false}
+              // Labels are fixed-width dates, so they collide before Recharts'
+              // own gap logic notices. One label is dropped on a narrow chart.
+              minTickGap={0}
+              interval={0}
+              height={24}
+            />
+            <YAxis
+              domain={domain}
+              orientation="right"
+              ticks={[domain[0], (domain[0] + domain[1]) / 2, domain[1]]}
+              tickFormatter={(v: number) => usdCompact.format(v)}
+              tick={tick}
+              axisLine={false}
+              tickLine={false}
+              width={52}
+            />
+            {/* Recharts owns the hover tracking and positions the readout, so the
+                tooltip cannot lag the pointer or drift at the plot edges. */}
+            <Tooltip
+              cursor={{ stroke: 'var(--border)' }}
+              isAnimationActive={false}
+              wrapperStyle={{ outline: 'none' }}
+              content={({ active: hovering, payload }) => {
+                if (hovering !== true || payload.length === 0) return null
+                const row = payload[0].payload
+                return (
+                  <div
+                    role="status"
+                    className="flex flex-col rounded-xl bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md ring-1 ring-foreground/10"
+                  >
+                    <span className="text-muted-foreground">
+                      {shortDate.format(row.ms)}
+                    </span>
+                    <strong className="font-bold tabular-nums">
+                      {usd.format(row.value)}
+                    </strong>
+                  </div>
+                )
+              }}
+            />
+            <ReferenceLine
+              y={principal}
+              stroke="var(--muted-foreground)"
+              strokeWidth={1}
+            />
+            <Area
+              type="monotone"
+              dataKey="value"
+              stroke="var(--chart-1)"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              fill="url(#value-fill)"
+              isAnimationActive={false}
+              activeDot={false}
+            />
+            {/* The terminal dot sits outside the series so it is not clipped
+                by the plot edge. The hover dot is Recharts' `activeDot`, and
+                the keyboard scrubber drives `cursor` below. */}
+            <ReferenceDot
+              x={last.date}
+              y={last.value}
+              r={4}
+              fill="var(--chart-1)"
+              ifOverflow="visible"
+            />
+            {active === undefined ? null : (
+              <ReferenceDot
+                x={active.date}
+                y={active.value}
+                r={4}
+                fill="var(--chart-1)"
+                ifOverflow="visible"
+              />
+            )}
+          </AreaChart>
+        </ResponsiveContainer>
 
         <label className="sr-only" htmlFor="history-scrubber">
           Explore investment value by date
@@ -279,24 +325,16 @@ export function HistoryChart({
           id="history-scrubber"
           type="range"
           min={0}
-          max={plot.length - 1}
-          value={cursor ?? plot.length - 1}
+          max={rows.length - 1}
+          value={cursor ?? rows.length - 1}
           onChange={(event) => setCursor(Number(event.target.value))}
           aria-valuetext={
             active === undefined
               ? summary
-              : `${shortDate.format(new Date(`${active.date}T00:00:00Z`))}: ${usd.format(active.value)}`
+              : `${shortDate.format(new Date(active.ms))}: ${usd.format(active.value)}`
           }
-          className="absolute inset-x-0 bottom-0 h-px w-full cursor-ew-resize appearance-none bg-transparent focus-visible:ring-3 focus-visible:ring-ring/30"
+          className="absolute inset-x-0 bottom-0 h-px w-full cursor-ew-resize appearance-none bg-transparent focus-visible:ring-3 focus-visible:ring-ring/30 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-transparent [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-transparent"
         />
-      </div>
-
-      <div className="flex justify-between text-xs text-muted-foreground">
-        {DATE_STOPS.map((t) => (
-          <span key={t}>
-            {tickDate.format(new Date(startMs + (endMs - startMs) * t))}
-          </span>
-        ))}
       </div>
     </div>
   )

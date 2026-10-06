@@ -86,9 +86,15 @@ export const selectedPeriodAtom = Atom.make<MarketsSchema.MarketPeriod>(
   }),
 )
 
+/**
+ * S&P first so the panel has data on first paint instead of waiting for a
+ * pick. `spy` is the provider's id for it (alpha-vantage-provider.ts).
+ */
+export const DEFAULT_MARKET_ID = MarketsSchema.MarketId.make('spy')
+
 export const selectedMarketIdAtom = Atom.make<
   MarketsSchema.MarketId | undefined
->(undefined)
+>(DEFAULT_MARKET_ID)
 
 const MarketHistoryOrNullSchema = Schema.NullOr(MarketsSchema.MarketHistory)
 

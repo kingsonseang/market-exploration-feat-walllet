@@ -30,9 +30,19 @@ export class MarketsService extends Effect.Service<MarketsService>()(
   },
 ) {}
 
-/** Live data. The stub below stays available for tests and offline runs. */
+/**
+ * Dev-only escape hatch: `MARKET_PROVIDER=stub` in `.env` swaps the live
+ * Alpha Vantage adapter for the fixture provider. The free tier allows 25
+ * requests per day and the cache does not survive HMR, so iterating on the UI
+ * without this burns the quota on the first edit.
+ */
+const useStubProvider = process.env['MARKET_PROVIDER'] === 'stub'
+
+/** Live data unless `MARKET_PROVIDER=stub`. */
 export const MarketsServiceLive = MarketsService.Default.pipe(
-  Layer.provide(AlphaVantageMarketProviderLive),
+  Layer.provide(
+    useStubProvider ? MarketProviderStubLive : AlphaVantageMarketProviderLive,
+  ),
 )
 
 export const MarketsServiceStub = MarketsService.Default.pipe(

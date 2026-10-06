@@ -117,7 +117,7 @@ const LOGO_URLS: Record<string, string> = {
   msft: '/logos/msft.jpg',
   nvda: '/logos/nvda.jpg',
   amzn: '/logos/amzn.jpg',
-  meta: '/logos/meta.jpg',
+  meta: '/logos/meta.webp',
   tsla: '/logos/tsla.jpg',
   btc: '/logos/btc.png',
   eth: '/logos/eth.png',

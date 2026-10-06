@@ -152,11 +152,83 @@ body {
   animation-delay: 140ms;
 }
 
+/**
+ * Chart entrance. Re-runs only when the series changes (market or period),
+ * which is a deliberate action; it must not fire while the user types an
+ * amount. Opacity plus a short rise, no path morph — the curve redraws at its
+ * new position rather than interpolating between two unrelated shapes.
+ */
+@keyframes chart-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.chart-enter {
+  animation: chart-enter 320ms var(--ease-out) both;
+}
+
+/** Control row entrance, staggered so the three fields don't land as a block. */
+.control-enter {
+  animation: chart-enter 300ms var(--ease-out) both;
+}
+
+.control-enter-1 {
+  animation-delay: 0ms;
+}
+
+.control-enter-2 {
+  animation-delay: 60ms;
+}
+
+.control-enter-3 {
+  animation-delay: 120ms;
+}
+
+/**
+ * Loader sweep. Opacity only, so it never triggers layout or paint, and the
+ * highlight travels on the compositor.
+ */
+@keyframes loader-sweep {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.loader-shimmer::after {
+  content: '';
+  display: block;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgb(255 255 255 / 0.7) 50%,
+    transparent 100%
+  );
+  animation: loader-sweep 1.4s ease-in-out infinite;
+}
+
 /* Reduced motion keeps the fade — it carries the entrance — and drops the
-   travel, which is the part that provokes motion sickness. */
+   travel, which is the part that provokes motion sickness. The loader keeps a
+   static tint instead of a sweep: its job is to hold the layout, not to move. */
 @media (prefers-reduced-motion: reduce) {
-  .hero-rise {
+  .hero-rise,
+  .chart-enter,
+  .control-enter {
     animation: hero-fade 200ms ease both;
+  }
+
+  .loader-shimmer::after {
+    animation: none;
+    opacity: 0;
   }
 }
 
