@@ -11,6 +11,7 @@ import {
   YAxis,
 } from 'recharts'
 import { cn } from 'cn'
+import { useReducedMotion } from '#/lib/use-count-up'
 import type * as MarketsSchema from '#/api/market-schema'
 
 /**
@@ -126,21 +127,6 @@ function ChartTick({
       {tickDate.format(toMs(value))}
     </text>
   )
-}
-
-/** Recharts' area draws in JS, so reduced motion has to be read, not styled. */
-const useReducedMotion = (): boolean => {
-  const [reduced, setReduced] = useState(false)
-
-  useEffect(() => {
-    const query = window.matchMedia('(prefers-reduced-motion: reduce)')
-    const sync = () => setReduced(query.matches)
-    sync()
-    query.addEventListener('change', sync)
-    return () => query.removeEventListener('change', sync)
-  }, [])
-
-  return reduced
 }
 
 export function HistoryChart({

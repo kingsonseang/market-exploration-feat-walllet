@@ -1,8 +1,9 @@
 import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
-import { useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type * as MarketsSchema from '#/api/market-schema'
 import { simulate, withinPeriod } from '#/lib/simulation'
 import type { SimulationResult } from '#/lib/simulation'
+import { useCountUp, useReducedMotion } from '#/lib/use-count-up'
 import { Alert, AlertDescription, AlertTitle } from '#/components/ui/alert'
 import { Avatar, AvatarFallback, AvatarImage } from '#/components/ui/avatar'
 import { Loader } from '#/components/ui/loader'
@@ -39,6 +40,11 @@ const mediumDate = new Intl.DateTimeFormat('en-US', {
 
 const PERIOD_YEARS = { '1Y': 1, '3Y': 3, '5Y': 5 } as const
 const PERIODS = ['1Y', '3Y', '5Y'] as const
+
+/** Count-up budget for a deliberate change (market or period switch). */
+const SERIES_COUNT_MS = 600
+/** Count-up budget while typing, so the figure keeps up with the hands. */
+const TYPING_COUNT_MS = 200
 
 const initials = (symbol: string): string => symbol.slice(0, 2).toUpperCase()
 
@@ -105,10 +111,99 @@ function MarketSelect({
 }
 
 /**
+ * Segmented control with a sliding thumb.
+ *
+ * The thumb is a separate element translated to the active button rather than
+ * each button toggling its own background, so the selection reads as one piece
+ * of hardware sliding rather than a colour swap. Position comes from measuring
+ * the buttons: CSS anchor positioning would be the tidier declaration but it
+ * isn't broadly supported yet, and a measured transform is the standard
+ * approach for a segmented control.
+ *
+ * The thumb is hidden until it has been measured once, so SSR and first paint
+ * never show it parked in the wrong slot.
+ */
+function PeriodPills({
+  period,
+  onPeriodChange,
+}: {
+  period: MarketsSchema.MarketPeriod
+  onPeriodChange: (value: MarketsSchema.MarketPeriod) => void
+}) {
+  const trackRef = useRef<HTMLDivElement>(null)
+  const buttonRefs = useRef(new Map<string, HTMLButtonElement>())
+  const [thumb, setThumb] = useState<{ x: number; width: number } | undefined>(
+    undefined,
+  )
+
+  // Re-measure on selection and on resize: the thumb has to track both the
+  // active button and the track reflowing with its container.
+  useLayoutEffect(() => {
+    const track = trackRef.current
+    const active = buttonRefs.current.get(period)
+    if (track === null || active === undefined) return
+
+    const measure = () => {
+      const trackBox = track.getBoundingClientRect()
+      const box = active.getBoundingClientRect()
+      setThumb({ x: box.left - trackBox.left, width: box.width })
+    }
+
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(track)
+    return () => observer.disconnect()
+  }, [period])
+
+  return (
+    <div
+      ref={trackRef}
+      className="relative flex h-12 w-fit items-center gap-1 rounded-full bg-muted p-1"
+      role="group"
+      aria-label="Historical period"
+    >
+      <span
+        aria-hidden="true"
+        data-measured={thumb === undefined ? 'false' : 'true'}
+        className="period-thumb pointer-events-none absolute inset-y-1 rounded-full bg-card"
+        style={
+          thumb === undefined
+            ? undefined
+            : {
+                width: `${thumb.width}px`,
+                transform: `translateX(${thumb.x - 4}px)`,
+              }
+        }
+      />
+      {PERIODS.map((option) => (
+        <button
+          key={option}
+          type="button"
+          ref={(node) => {
+            if (node === null) buttonRefs.current.delete(option)
+            else buttonRefs.current.set(option, node)
+          }}
+          onClick={() => onPeriodChange(option)}
+          aria-pressed={period === option}
+          className={cn(
+            'relative h-full rounded-full px-4 text-sm font-medium outline-none transition-[color,transform] duration-150 ease-(--ease-out) active:scale-[0.97] focus-visible:ring-3 focus-visible:ring-ring/30',
+            period === option
+              ? 'text-foreground'
+              : 'text-muted-foreground hover:text-foreground',
+          )}
+        >
+          {option}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/**
  * The three inputs share one row: explore a market, how much, how long ago.
  * All three boxes are `h-12` and the labels get a fixed line box, so the row
  * reads as one aligned strip rather than three differently sized fields.
- * `control-enter-*` staggers the row in once on mount — never on change.
+ * `reveal-item-*` staggers the panel in once the first data lands.
  */
 function Controls({
   markets,
@@ -130,8 +225,8 @@ function Controls({
   const label = 'text-sm font-medium leading-5'
 
   return (
-    <div className="grid gap-5 md:grid-cols-3 md:gap-6">
-      <div className="control-enter control-enter-1 flex flex-col gap-2">
+    <div className="reveal-item reveal-item-1 grid gap-5 md:grid-cols-3 md:gap-6">
+      <div className="flex flex-col gap-2">
         <label className={label} htmlFor="market-select-trigger">
           Explore a market
         </label>
@@ -150,7 +245,7 @@ function Controls({
         )}
       </div>
 
-      <div className="control-enter control-enter-2 flex flex-col gap-2">
+      <div className="flex flex-col gap-2">
         <label className={label} htmlFor="investment-amount">
           If I had invested
         </label>
@@ -166,39 +261,29 @@ function Controls({
         <p className="text-xs text-muted-foreground">Make it your amount.</p>
       </div>
 
-      <div className="control-enter control-enter-3 flex flex-col gap-2">
+      <div className="flex flex-col gap-2">
         <p className={label}>How long ago?</p>
-        <div
-          className="flex h-12 w-fit items-center gap-1 rounded-full bg-muted p-1"
-          role="group"
-          aria-label="Historical period"
-        >
-          {PERIODS.map((option) => (
-            <button
-              key={option}
-              type="button"
-              onClick={() => onPeriodChange(option)}
-              aria-pressed={period === option}
-              className={cn(
-                'h-full rounded-full px-4 text-sm font-medium outline-none transition-[color,background-color,transform] duration-150 ease-(--ease-out) active:scale-[0.97] focus-visible:ring-3 focus-visible:ring-ring/30',
-                period === option
-                  ? 'bg-card text-foreground'
-                  : 'text-muted-foreground hover:text-foreground',
-              )}
-            >
-              {option}
-            </button>
-          ))}
-        </div>
+        <PeriodPills period={period} onPeriodChange={onPeriodChange} />
       </div>
     </div>
   )
 }
 
 /**
- * What the fixed amount could be worth. No motion here: the figure changes on
- * every keystroke in the amount field, and animating data the user is reading
- * fights the input. The colour is the only thing that carries the sign.
+ * What the fixed amount could be worth.
+ *
+ * The three figures count up together. They share one progress value so the
+ * total, the percentage and the profit never disagree mid-flight — three
+ * independent tweens would drift apart and read as three different numbers.
+ *
+ * Duration follows the cause of the change: a market or period switch is a
+ * deliberate action that deserves the full 600ms, while a keystroke in the
+ * amount field gets 200ms so the figure keeps up with the hands. The loop
+ * always resumes from the number currently on screen (see `useCountUp`), which
+ * is what stops typing from making the value jump back to zero each time.
+ *
+ * Colour is deliberately not animated: the sign can flip, and a colour that
+ * tweens through grey in between looks like "no result".
  *
  * While a refetch is in flight the previous figure stays put rather than
  * dropping to a placeholder — replacing it and back is what read as a blink.
@@ -207,11 +292,25 @@ function Worth({
   result,
   period,
   loading,
+  durationMs,
+  animate,
 }: {
   result: SimulationResult | undefined
   period: MarketsSchema.MarketPeriod
   loading: boolean
+  durationMs: number
+  animate: boolean
 }) {
+  const target = result?.value ?? 0
+  const percent = result?.percent ?? 0
+  const profit = result?.profit ?? 0
+
+  const shownValue = useCountUp(target, durationMs, { enabled: animate })
+  const shownPercent = useCountUp(percent, durationMs, { enabled: animate })
+  const shownProfit = useCountUp(Math.abs(profit), durationMs, {
+    enabled: animate,
+  })
+
   const tone =
     result === undefined
       ? 'text-muted-foreground'
@@ -220,7 +319,7 @@ function Worth({
         : 'text-chart-3'
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="reveal-item reveal-item-2 flex flex-col gap-2">
       <div className="flex items-baseline justify-between gap-3">
         <p className="text-sm text-muted-foreground">It could be worth</p>
         <span className="text-sm text-muted-foreground">
@@ -236,18 +335,17 @@ function Worth({
             tone,
           )}
         >
-          {result === undefined ? '—' : usd.format(result.value)}
+          {result === undefined ? '—' : usd.format(shownValue)}
         </span>
       )}
       {result === undefined ? null : (
         <div className="flex flex-wrap items-center gap-2">
           <span className={cn('text-lg font-bold tabular-nums', tone)}>
-            {result.percent >= 0 ? '+' : ''}
-            {result.percent.toFixed(2)}%
+            {shownPercent >= 0 ? '+' : ''}
+            {shownPercent.toFixed(2)}%
           </span>
           <span className="text-sm text-muted-foreground">
-            {usd.format(Math.abs(result.profit))}{' '}
-            {result.profit >= 0 ? 'gained' : 'lost'}
+            {usd.format(shownProfit)} {result.profit >= 0 ? 'gained' : 'lost'}
           </span>
         </div>
       )}
@@ -263,6 +361,7 @@ export function HistoryPanel() {
   const history = useAtomValue(marketHistoryAtom)
   const markets = useAtomValue(marketsAtom)
   const [principal, setPrincipal] = useState(1000)
+  const reducedMotion = useReducedMotion()
 
   const marketList = Result.isSuccess(markets) ? markets.value : undefined
   const market =
@@ -273,10 +372,28 @@ export function HistoryPanel() {
   const historyPending = Result.isInitial(history) || Result.isWaiting(history)
   const hasHistory = Result.isSuccess(history) && history.value !== null
 
+  /**
+   * Whether this render's tree can be reproduced by the server.
+   *
+   * Only `markets` is dehydrated into the document (`src/routes/index.tsx`);
+   * `history` is not, so the server always renders it as pending. But the
+   * client can already hold history by its first render, and a figure the
+   * server didn't render is a hydration mismatch.
+   *
+   * So both `result` and `loading` stay in their pre-mount state: the server
+   * pass and the first client render agree on "nothing yet", and both show
+   * loaders — which is the honest state, since the client has not asked yet.
+   * After mount the real values take over. Gating only one of the two is not
+   * enough: the figure and the loader have to flip on the same render.
+   */
+  const [hydrated, setHydrated] = useState(false)
+  useEffect(() => setHydrated(true), [])
+
   const points = hasHistory
     ? withinPeriod(history.value.points, period)
     : undefined
-  const result = points === undefined ? undefined : simulate(points, principal)
+  const result =
+    hydrated && points !== undefined ? simulate(points, principal) : undefined
 
   /**
    * Loaders are for the first paint only. On a later refetch the previous
@@ -285,12 +402,49 @@ export function HistoryPanel() {
    * the only thing that keeps the layout from jumping mid-refetch.
    */
   const firstLoad = marketList === undefined
-  const loading = firstLoad || (historyPending && !hasHistory)
+  const loading = !hydrated || firstLoad || (historyPending && !hasHistory)
   const seriesKey = `${marketId ?? 'none'}:${period}`
+
+  /**
+   * Both requests have answered — successfully or not. Errors count: the panel
+   * still has to reveal and show its alert, otherwise a failed fetch would
+   * leave the page permanently half-formed.
+   */
+  const settled =
+    !Result.isInitial(markets) &&
+    !Result.isWaiting(markets) &&
+    !Result.isInitial(history) &&
+    !Result.isWaiting(history)
+
+  // Latched: the entrance plays once, and later refetches never replay it.
+  const [revealed, setRevealed] = useState(false)
+  useEffect(() => {
+    if (settled && !revealed) setRevealed(true)
+  }, [settled, revealed])
+
+  /**
+   * Count-up budget follows the cause of the change. A market or period switch
+   * is a deliberate action and gets the full beat; an amount keystroke is not,
+   * and a 600ms tween there would lag the hands. Adjusting during render is
+   * React's documented pattern — setting state here re-renders before
+   * committing, so the committed render already carries the new budget.
+   */
+  const [count, setCount] = useState({
+    seriesKey,
+    principal,
+    ms: SERIES_COUNT_MS,
+  })
+  if (count.seriesKey !== seriesKey) {
+    setCount({ seriesKey, principal, ms: SERIES_COUNT_MS })
+  } else if (count.principal !== principal) {
+    setCount({ ...count, principal, ms: TYPING_COUNT_MS })
+  }
+  const durationMs = count.seriesKey === seriesKey ? count.ms : SERIES_COUNT_MS
 
   return (
     <section
       id="simulator"
+      data-revealed={revealed ? 'true' : 'false'}
       className="bg-white scroll-mt-6 overflow-hidden rounded-4xl border border-border shadow-[0_18px_60px_-30px_rgb(49_68_68_0.22)]"
     >
       <div className="flex flex-col gap-6 p-5 md:p-6">
@@ -332,9 +486,15 @@ export function HistoryPanel() {
           onPeriodChange={setPeriod}
         />
 
-        <Worth result={result} period={period} loading={loading} />
+        <Worth
+          result={result}
+          period={period}
+          loading={loading}
+          durationMs={durationMs}
+          animate={!reducedMotion && revealed}
+        />
 
-        <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 border-t border-border pt-4">
+        <div className="reveal-item reveal-item-3 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 border-t border-border pt-4">
           <p className="text-sm text-muted-foreground">
             Starting on{' '}
             {result === undefined ? (
@@ -366,13 +526,15 @@ export function HistoryPanel() {
             </p>
           )
         ) : (
-          <HistoryChart
-            points={points ?? []}
-            values={result.values}
-            principal={principal}
-            marketName={market?.name ?? 'Market'}
-            seriesKey={seriesKey}
-          />
+          <div className="reveal-item reveal-item-4">
+            <HistoryChart
+              points={points ?? []}
+              values={result.values}
+              principal={principal}
+              marketName={market?.name ?? 'Market'}
+              seriesKey={seriesKey}
+            />
+          </div>
         )}
       </div>
     </section>

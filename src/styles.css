@@ -173,21 +173,60 @@ body {
   animation: chart-enter 320ms var(--ease-out) both;
 }
 
-/** Control row entrance, staggered so the three fields don't land as a block. */
-.control-enter {
-  animation: chart-enter 300ms var(--ease-out) both;
+/**
+ * Panel reveal. The panel holds its final layout while it waits for the first
+ * RPC pair to answer, then its sections fade up in sequence — controls, the
+ * figure, the meta line, the chart. Gating the reveal on data means the panel
+ * never animates into a half-formed state, and it is a transition rather than
+ * a keyframe so a re-render mid-stagger still lands where it belongs.
+ */
+.reveal-item {
+  opacity: 0;
+  transform: translateY(8px);
+  transition:
+    opacity 320ms var(--ease-out),
+    transform 320ms var(--ease-out);
+  transition-delay: var(--reveal-delay, 0ms);
 }
 
-.control-enter-1 {
-  animation-delay: 0ms;
+[data-revealed='true'] .reveal-item {
+  opacity: 1;
+  transform: translateY(0);
 }
 
-.control-enter-2 {
-  animation-delay: 60ms;
+/* 70ms apart, inside the band that keeps a group from landing as one block. */
+.reveal-item-1 {
+  --reveal-delay: 0ms;
 }
 
-.control-enter-3 {
-  animation-delay: 120ms;
+.reveal-item-2 {
+  --reveal-delay: 70ms;
+}
+
+.reveal-item-3 {
+  --reveal-delay: 140ms;
+}
+
+.reveal-item-4 {
+  --reveal-delay: 210ms;
+}
+
+/**
+ * Period pill thumb. It translates between measured positions, so the
+ * transition has to cover both `transform` and `width` — the pills are not all
+ * the same width. Hidden until measured, so the first paint (and SSR) never
+ * shows it parked in the wrong slot.
+ */
+.period-thumb {
+  opacity: 0;
+  transition:
+    transform 220ms var(--ease-out),
+    width 220ms var(--ease-out),
+    opacity 120ms ease-out;
+}
+
+.period-thumb[data-measured='true'] {
+  opacity: 1;
 }
 
 /**
@@ -242,9 +281,24 @@ body {
    static tint instead of a sweep: its job is to hold the layout, not to move. */
 @media (prefers-reduced-motion: reduce) {
   .hero-rise,
-  .chart-enter,
-  .control-enter {
+  .chart-enter {
     animation: hero-fade 200ms ease both;
+  }
+
+  /* Keep the reveal — without it the panel never appears — but drop the
+     stagger and the travel, and let the pill thumb jump rather than slide. */
+  .reveal-item,
+  [data-revealed='true'] .reveal-item {
+    transition: opacity 200ms ease;
+    transition-delay: 0ms;
+    transform: none;
+  }
+
+  /* The inline transform still positions the thumb under the active pill —
+     it just stops sliding there. */
+  .period-thumb,
+  .period-thumb[data-measured='true'] {
+    transition: opacity 200ms ease;
   }
 
   .loader-shimmer::after {
