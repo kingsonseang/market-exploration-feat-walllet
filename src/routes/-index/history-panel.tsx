@@ -186,7 +186,7 @@ function PeriodPills({
           onClick={() => onPeriodChange(option)}
           aria-pressed={period === option}
           className={cn(
-            'relative h-full rounded-full px-4 text-sm font-medium outline-none transition-[color,transform] duration-150 ease-(--ease-out) active:scale-[0.97] focus-visible:ring-3 focus-visible:ring-ring/30',
+            'relative h-full rounded-full px-4 text-sm font-medium outline-none transition-[color,transform] duration-150 ease-out active:scale-[0.97] focus-visible:ring-3 focus-visible:ring-ring/30',
             period === option
               ? 'text-foreground'
               : 'text-muted-foreground hover:text-foreground',
@@ -249,7 +249,7 @@ function Controls({
         <label className={label} htmlFor="investment-amount">
           If I had invested
         </label>
-        <div className="flex h-12 items-center gap-1 rounded-2xl border border-border bg-muted px-3 transition-[border-color,box-shadow] duration-150 ease-(--ease-out) focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/20">
+        <div className="flex h-12 items-center gap-1 rounded-2xl border border-border bg-muted px-3 transition-[border-color,box-shadow] duration-150 ease-out focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/20">
           <span className="text-sm font-medium text-muted-foreground">USD</span>
           <AmountInput
             id="investment-amount"
