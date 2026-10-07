@@ -77,8 +77,10 @@ function MarketSelect({
       }}
     >
       {/* Base UI cannot infer a label from a logo + name row, so the
-          trigger renders the selected market itself. */}
-      <SelectTrigger className="h-auto w-full min-w-56 justify-start gap-2 rounded-2xl border-border bg-surface">
+          trigger renders the selected market itself. The `data-` variant
+          deliberately mirrors the vendored default height so this control
+          lands on the same 48px box as the other two in the row. */}
+      <SelectTrigger className="w-full min-w-56 justify-start gap-2 rounded-2xl border-border bg-surface data-[size=default]:h-12">
         <SelectValue placeholder="Explore a market">
           {selected === undefined ? null : (
             <>
@@ -104,8 +106,9 @@ function MarketSelect({
 
 /**
  * The three inputs share one row: explore a market, how much, how long ago.
- * Each field is wrapped in `control-enter-*` so the row staggers in once on
- * mount rather than appearing as a single block.
+ * All three boxes are `h-12` and the labels get a fixed line box, so the row
+ * reads as one aligned strip rather than three differently sized fields.
+ * `control-enter-*` staggers the row in once on mount — never on change.
  */
 function Controls({
   markets,
@@ -124,14 +127,16 @@ function Controls({
   period: MarketsSchema.MarketPeriod
   onPeriodChange: (value: MarketsSchema.MarketPeriod) => void
 }) {
+  const label = 'text-sm font-medium leading-5'
+
   return (
-    <div className="grid gap-5 md:grid-cols-3 md:items-start md:gap-6">
-      <div className="control-enter control-enter-1 flex flex-col gap-1.5">
-        <label className="text-sm font-medium" htmlFor="market-select-trigger">
+    <div className="grid gap-5 md:grid-cols-3 md:gap-6">
+      <div className="control-enter control-enter-1 flex flex-col gap-2">
+        <label className={label} htmlFor="market-select-trigger">
           Explore a market
         </label>
         {markets === undefined ? (
-          <Loader className="h-11 w-full" label="Loading markets" />
+          <Loader className="h-12 w-full" label="Loading markets" />
         ) : markets.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             No markets available right now.
@@ -145,11 +150,11 @@ function Controls({
         )}
       </div>
 
-      <div className="control-enter control-enter-2 flex flex-col gap-1.5">
-        <label className="text-sm font-medium" htmlFor="investment-amount">
+      <div className="control-enter control-enter-2 flex flex-col gap-2">
+        <label className={label} htmlFor="investment-amount">
           If I had invested
         </label>
-        <div className="flex items-center gap-1 rounded-2xl border border-border bg-muted px-3 py-2 transition-[border-color,box-shadow] duration-150 ease-(--ease-out) focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/20">
+        <div className="flex h-12 items-center gap-1 rounded-2xl border border-border bg-muted px-3 transition-[border-color,box-shadow] duration-150 ease-(--ease-out) focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/20">
           <span className="text-sm font-medium text-muted-foreground">USD</span>
           <AmountInput
             id="investment-amount"
@@ -162,9 +167,9 @@ function Controls({
       </div>
 
       <div className="control-enter control-enter-3 flex flex-col gap-2">
-        <p className="text-sm font-medium">How long ago?</p>
+        <p className={label}>How long ago?</p>
         <div
-          className="flex w-fit gap-1 rounded-full bg-muted p-1"
+          className="flex h-12 w-fit items-center gap-1 rounded-full bg-muted p-1"
           role="group"
           aria-label="Historical period"
         >
@@ -175,7 +180,7 @@ function Controls({
               onClick={() => onPeriodChange(option)}
               aria-pressed={period === option}
               className={cn(
-                'rounded-full px-4 py-1.5 text-sm font-medium outline-none transition-[color,background-color,transform] duration-150 ease-(--ease-out) active:scale-[0.97] focus-visible:ring-3 focus-visible:ring-ring/30',
+                'h-full rounded-full px-4 text-sm font-medium outline-none transition-[color,background-color,transform] duration-150 ease-(--ease-out) active:scale-[0.97] focus-visible:ring-3 focus-visible:ring-ring/30',
                 period === option
                   ? 'bg-card text-foreground'
                   : 'text-muted-foreground hover:text-foreground',
@@ -194,6 +199,9 @@ function Controls({
  * What the fixed amount could be worth. No motion here: the figure changes on
  * every keystroke in the amount field, and animating data the user is reading
  * fights the input. The colour is the only thing that carries the sign.
+ *
+ * While a refetch is in flight the previous figure stays put rather than
+ * dropping to a placeholder — replacing it and back is what read as a blink.
  */
 function Worth({
   result,
@@ -262,18 +270,22 @@ export function HistoryPanel() {
       ? undefined
       : marketList.find((m) => m.id === marketId)
 
-  const loading =
-    marketList === undefined ||
-    Result.isInitial(history) ||
-    Result.isWaiting(history)
+  const historyPending = Result.isInitial(history) || Result.isWaiting(history)
+  const hasHistory = Result.isSuccess(history) && history.value !== null
 
-  const points =
-    Result.isSuccess(history) && history.value !== null
-      ? withinPeriod(history.value.points, period)
-      : undefined
+  const points = hasHistory
+    ? withinPeriod(history.value.points, period)
+    : undefined
   const result = points === undefined ? undefined : simulate(points, principal)
-  // Identity of the plotted series: the chart's entrance is keyed to this so
-  // it re-runs on a market or period change, never on an amount keystroke.
+
+  /**
+   * Loaders are for the first paint only. On a later refetch the previous
+   * figure and chart stay on screen until the new data lands, so changing
+   * market or period never blanks the panel. A past figure and chart are also
+   * the only thing that keeps the layout from jumping mid-refetch.
+   */
+  const firstLoad = marketList === undefined
+  const loading = firstLoad || (historyPending && !hasHistory)
   const seriesKey = `${marketId ?? 'none'}:${period}`
 
   return (
@@ -341,14 +353,18 @@ export function HistoryPanel() {
           </p>
         </div>
 
-        {loading ? (
-          <Loader className="h-60 w-full" label="Loading history" />
-        ) : result === undefined ? (
-          <p className="py-10 text-center text-sm text-muted-foreground">
-            {marketId === undefined
-              ? 'Pick a market to see how far a fixed amount would have come.'
-              : 'Not enough history to chart this period.'}
-          </p>
+        {/* Chart, loader, or empty state — in that order. A stale chart always wins
+            over a loader so a refetch never blanks the panel. */}
+        {result === undefined ? (
+          loading ? (
+            <Loader className="h-60 w-full" label="Loading history" />
+          ) : (
+            <p className="flex h-60 items-center justify-center text-center text-sm text-muted-foreground">
+              {marketId === undefined
+                ? 'Pick a market to see how far a fixed amount would have come.'
+                : 'Not enough history to chart this period.'}
+            </p>
+          )
         ) : (
           <HistoryChart
             points={points ?? []}

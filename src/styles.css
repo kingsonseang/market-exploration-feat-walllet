@@ -191,21 +191,23 @@ body {
 }
 
 /**
- * Loader sweep. Opacity only, so it never triggers layout or paint, and the
- * highlight travels on the compositor.
+ * Loader sweep. The highlight travels across on the compositor instead of
+ * pulsing the container's opacity — an opacity pulse on a static gradient
+ * reads as a blink, which is exactly what a loader must not look like.
  */
 @keyframes loader-sweep {
   from {
-    opacity: 0.35;
+    transform: translateX(-100%);
   }
   to {
-    opacity: 1;
+    transform: translateX(100%);
   }
 }
 
 .loader-shimmer::after {
   content: '';
   display: block;
+  width: 100%;
   height: 100%;
   background: linear-gradient(
     90deg,
@@ -213,7 +215,26 @@ body {
     rgb(255 255 255 / 0.7) 50%,
     transparent 100%
   );
-  animation: loader-sweep 1.4s ease-in-out infinite;
+  animation: loader-sweep 1.2s ease-in-out infinite;
+}
+
+/**
+ * Tooltip entrance. Recharts mounts a fresh node each time the readout
+ * appears, so `@starting-style` is the right tool: no JS state, and the
+ * entry is interruptible because it is a transition, not a keyframe. Only a
+ * short rise — the tooltip tracks the pointer, so it must never travel far.
+ */
+.chart-tooltip {
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity 120ms var(--ease-out),
+    transform 120ms var(--ease-out);
+
+  @starting-style {
+    opacity: 0;
+    transform: translateY(4px);
+  }
 }
 
 /* Reduced motion keeps the fade — it carries the entrance — and drops the
@@ -229,6 +250,15 @@ body {
   .loader-shimmer::after {
     animation: none;
     opacity: 0;
+  }
+
+  .chart-tooltip {
+    transition: opacity 200ms ease;
+
+    @starting-style {
+      opacity: 0;
+      transform: none;
+    }
   }
 }
 

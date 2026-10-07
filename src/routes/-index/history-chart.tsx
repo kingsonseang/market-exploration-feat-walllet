@@ -21,11 +21,17 @@ import type * as MarketsSchema from '#/api/market-schema'
  * starting principal is meaningful. `simulate` already produces that rebased
  * series, so one array drives the line, the axis and the readout.
  *
- * Recharts' built-in draw-in is disabled deliberately. It re-fires whenever
- * `data` changes, and `data` changes on every keystroke in the amount field —
- * that would animate the data the user is reading. Instead the whole chart
- * fades in once per `seriesKey` (market + period), which is the only change
- * worth marking.
+ * On motion: the chart stays mounted for its whole life. An earlier version
+ * keyed the wrapper on the series, which remounted Recharts and replayed a
+ * fade from `opacity: 0` — a blank frame on every market or period change,
+ * which reads as a blink. Now the curve animates in place instead.
+ *
+ * The draw-in is gated on the *series* changing (market or period), never on
+ * the amount. Recharts restarts its animation whenever the `points` array
+ * changes by reference, and rebasing to a new amount produces a new array on
+ * every keystroke — so left ungated, typing would replay a 500ms curve redraw
+ * per character. The shape is identical across an amount change anyway (every
+ * value scales linearly), so there is nothing worth animating there.
  */
 
 const usd = new Intl.NumberFormat('en-US', {
@@ -63,15 +69,16 @@ const tickDate = new Intl.DateTimeFormat('en-US', {
 
 const toMs = (iso: string): number => Date.parse(`${iso}T00:00:00Z`)
 
+/** Long enough for the curve to land before the gate closes. */
+const DRAW_MS = 500
+
 interface Row extends MarketsSchema.PricePoint {
   readonly ms: number
   readonly value: number
 }
 
-/**
- * Evenly spaced x-axis labels, as data-key values (a category axis matches
- * `ticks` against the data, not against indexes).
- */
+/** Evenly spaced x-axis labels, as data-key values (a category axis matches
+ * `ticks` against the data, not against indexes). */
 const dateTicks = (rows: ReadonlyArray<Row>): ReadonlyArray<string> =>
   [0, 0.25, 0.5, 0.75, 1].map(
     (t) => rows[Math.round((rows.length - 1) * t)].date,
@@ -121,6 +128,21 @@ function ChartTick({
   )
 }
 
+/** Recharts' area draws in JS, so reduced motion has to be read, not styled. */
+const useReducedMotion = (): boolean => {
+  const [reduced, setReduced] = useState(false)
+
+  useEffect(() => {
+    const query = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const sync = () => setReduced(query.matches)
+    sync()
+    query.addEventListener('change', sync)
+    return () => query.removeEventListener('change', sync)
+  }, [])
+
+  return reduced
+}
+
 export function HistoryChart({
   points,
   values,
@@ -134,13 +156,37 @@ export function HistoryChart({
   values: ReadonlyArray<number>
   principal: number
   marketName: string
-  /** Identity of the underlying series; a change re-runs the entrance. */
+  /** Identity of the underlying series; a change re-runs the draw-in. */
   seriesKey: string
   className?: string
 }) {
   const [cursor, setCursor] = useState<number | undefined>(undefined)
   const [compact, setCompact] = useState(false)
+  const reducedMotion = useReducedMotion()
   const containerRef = useRef<HTMLDivElement>(null)
+
+  /**
+   * Whether Recharts may animate the next render. Adjusting during render is
+   * React's documented pattern: setting state here re-renders before
+   * committing, so the committed render already carries the new key with
+   * `animate` open — which is the render that has both the new data and
+   * permission to draw it.
+   */
+  const [draw, setDraw] = useState({ seriesKey, animate: true })
+  if (draw.seriesKey !== seriesKey) {
+    setDraw({ seriesKey, animate: !reducedMotion })
+  }
+
+  // Close the gate once the curve has landed, so subsequent renders settle
+  // instantly instead of redrawing on every keystroke.
+  useEffect(() => {
+    if (!draw.animate) return
+    const id = setTimeout(
+      () => setDraw((d) => ({ ...d, animate: false })),
+      DRAW_MS,
+    )
+    return () => clearTimeout(id)
+  }, [draw.animate, draw.seriesKey])
 
   /** `values` comes from `simulate`, which returns one entry per point. */
   const rows = useMemo<ReadonlyArray<Row>>(
@@ -187,20 +233,18 @@ export function HistoryChart({
     )
   }
 
-  const startMs = rows[0].ms
-  const endMs = rows[rows.length - 1].ms
   const last: Row = rows[rows.length - 1]
   const active: Row | undefined =
     cursor === undefined ? undefined : rows[cursor]
 
   const summary = `${marketName}: ${usd.format(principal)} invested on ${longDate.format(
-    new Date(startMs),
-  )} became ${usd.format(last.value)} as of ${longDate.format(new Date(endMs))}.`
+    new Date(rows[0].ms),
+  )} became ${usd.format(last.value)} as of ${longDate.format(new Date(last.ms))}.`
 
   const tick = { fill: 'var(--muted-foreground)', fontSize: 11 }
 
   return (
-    <div className={cn('chart-enter flex flex-col', className)} key={seriesKey}>
+    <div className={cn('chart-enter flex flex-col', className)}>
       <div className="relative h-60 w-full" ref={containerRef}>
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart
@@ -240,8 +284,6 @@ export function HistoryChart({
               }
               axisLine={false}
               tickLine={false}
-              // Labels are fixed-width dates, so they collide before Recharts'
-              // own gap logic notices. One label is dropped on a narrow chart.
               minTickGap={0}
               interval={0}
               height={24}
@@ -268,12 +310,12 @@ export function HistoryChart({
                 return (
                   <div
                     role="status"
-                    className="flex flex-col rounded-xl bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md ring-1 ring-foreground/10"
+                    className="chart-tooltip flex flex-col rounded-xl bg-popover px-2.5 py-1.5 text-xs text-foreground shadow-md ring-1 ring-foreground/10"
                   >
-                    <span className="text-muted-foreground">
+                    <span className="font-medium">
                       {shortDate.format(row.ms)}
                     </span>
-                    <strong className="font-bold tabular-nums">
+                    <strong className="text-sm font-bold tabular-nums">
                       {usd.format(row.value)}
                     </strong>
                   </div>
@@ -293,7 +335,9 @@ export function HistoryChart({
               strokeLinecap="round"
               strokeLinejoin="round"
               fill="url(#value-fill)"
-              isAnimationActive={false}
+              isAnimationActive={draw.animate}
+              animationDuration={DRAW_MS}
+              animationEasing="ease-out"
               activeDot={false}
             />
             {/* The terminal dot sits outside the series so it is not clipped

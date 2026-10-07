@@ -3,10 +3,11 @@ import { cn } from 'cn'
 /**
  * Loading placeholder for market data.
  *
- * A shimmer rather than a pulse: the sweep reads as "working", where a pulse
- * reads as "disabled". Opacity-only so it stays off the main thread's critical
- * path, and it settles to a plain tint under reduced motion instead of
- * disappearing entirely — the shape still needs to hold the layout.
+ * A sweeping highlight rather than a pulse: travelling light reads as
+ * "working", where a pulse reads as "disabled" — or, worse, as a blink. The
+ * sweep is transform-only so it stays on the compositor, and it settles to a
+ * plain tint under reduced motion: the shape's job is to hold the layout, not
+ * to move.
  */
 function Loader({
   className,
