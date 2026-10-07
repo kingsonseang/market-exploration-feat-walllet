@@ -22,6 +22,8 @@ body {
   --font-sans: 'Onest Variable', sans-serif;
   --color-brand-lime: var(--brand-lime);
   --color-surface: var(--surface);
+  --color-slate-soft: var(--slate-soft);
+  --color-slate-faint: var(--slate-faint);
   --color-navy-soft: var(--navy-soft);
   --color-navy: var(--navy);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -80,8 +82,14 @@ body {
   --primary-foreground: #ffffff;
   --secondary: #e7eaef;
   --secondary-foreground: #253035;
-  --muted: #edf1f4;
+  /* The brand has exactly two fills: white and this. shadcn's stock #edf1f4
+     was never in the palette and is what made the controls read grey. */
+  --muted: #f2f5f6;
   --muted-foreground: #718e9c;
+  /* The brand's two lighter text tiers, used by frequency in the original:
+     tertiary copy first, placeholders and disabled state second. */
+  --slate-soft: #7793a1;
+  --slate-faint: #a2b5be;
   --accent: #e5f7f4;
   --accent-foreground: #253035;
   --destructive: #f93822;
@@ -96,6 +104,10 @@ body {
   /* Decorative brand lime: the hero's terminal dot only. Never body text —
      1.9:1 on white. */
   --brand-lime: #74f286;
+  /* Contrast on white, for reference: slate-faint 2.1:1, slate-soft 3.2:1,
+     muted-foreground 3.5:1. Those are the brand's own ratios, so the lighter
+     tiers are restricted to large, tertiary, or disabled text — never small
+     functional labels. */
   --radius: 1rem;
   --sidebar: #ffffff;
   --sidebar-foreground: #253035;
@@ -153,25 +165,11 @@ body {
 }
 
 /**
- * Chart entrance. Re-runs only when the series changes (market or period),
- * which is a deliberate action; it must not fire while the user types an
- * amount. Opacity plus a short rise, no path morph — the curve redraws at its
- * new position rather than interpolating between two unrelated shapes.
+ * Chart entrance. Retired: the chart sits inside a `reveal-item`, so it was
+ * running a fade-and-rise from its own keyframe *and* the panel's transition
+ * on mount — two entrances stacked on one element read as sluggish. The
+ * reveal owns mount; Recharts' own draw owns a series change.
  */
-@keyframes chart-enter {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.chart-enter {
-  animation: chart-enter 320ms var(--ease-out) both;
-}
 
 /**
  * Panel reveal. The panel holds its final layout while it waits for the first
@@ -280,8 +278,7 @@ body {
    travel, which is the part that provokes motion sickness. The loader keeps a
    static tint instead of a sweep: its job is to hold the layout, not to move. */
 @media (prefers-reduced-motion: reduce) {
-  .hero-rise,
-  .chart-enter {
+  .hero-rise {
     animation: hero-fade 200ms ease both;
   }
 

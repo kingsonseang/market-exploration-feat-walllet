@@ -12,7 +12,7 @@ import { HistoryPanel } from './history-panel'
  */
 export function Hero() {
   return (
-    <section className="px-8 pt-12 pb-9 text-center min-[810px]:px-21 min-[810px]:pt-16 min-[810px]:pb-12">
+    <section className="px-4 pt-10 pb-8 text-center min-[810px]:px-21 min-[810px]:pt-16 min-[810px]:pb-12">
       <h1 className="mx-auto max-w-3xl text-[clamp(35px,7.7vw,57px)] font-bold tracking-[-2px] text-balance min-[761px]:text-[clamp(42px,5.65vw,78px)] min-[761px]:tracking-[-3.7px]">
         <span className="hero-rise hero-rise-1 block leading-[1.07]">
           A little back then.
@@ -37,16 +37,16 @@ export function App() {
         src="/hero-coin-ring.svg"
         alt=""
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 -z-10 size-full object-cover object-center"
+        className="pointer-events-none absolute inset-0 -z-10 size-full object-cover object-top min-[810px]:object-center"
       />
       <Hero />
-      <section className="mx-auto flex w-full max-w-300 flex-col px-8 pb-10 min-[810px]:px-21">
+      <section className="mx-auto flex w-full max-w-300 flex-col px-4 pb-10 min-[810px]:px-21">
         <HistoryPanel />
         <footer className="mt-10 flex flex-col items-center gap-1 text-center">
           <p className="text-sm font-medium">
             One investment. Held through the ups and downs.
           </p>
-          <p className="max-w-md text-xs text-muted-foreground">
+          <p className="max-w-md text-xs text-slate-soft">
             Historical prices, not future promises. Fees and taxes excluded.
           </p>
           <p className="text-xs">
@@ -55,7 +55,7 @@ export function App() {
               href="https://www.alphavantage.co/"
               target="_blank"
               rel="noreferrer"
-              className="text-muted-foreground underline underline-offset-4 transition-colors duration-150 ease-out hover:text-foreground"
+              className="text-slate-soft underline underline-offset-4 transition-colors duration-150 ease-out hover:text-foreground"
             >
               Alpha Vantage
             </a>

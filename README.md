@@ -1,202 +1,121 @@
-Welcome to your new TanStack Start app!
+# Market exploration — Walllet feature prototype
 
-# Getting Started
+An AI-assisted exploration of **TanStack Start + Effect v3**, built to answer one
+question: *what could the Walllet website add so that "invest" and "holdings"
+content leads somewhere, instead of dead-ending at the FAQ page?*
 
-To run this application:
+The answer this prototype argues for is a **historical "what if" widget**. Pick a market, pick a period, enter an amount, and see what that fixed sum would have become — answered with live data rather than a projection.
+
+> **Status: prototype.** This is an exploration, not a shipping feature. Numbers
+> are historical observations about past prices, never a projection, a
+> recommendation, or financial advice.
+
+## What it does
+
+- 10 markets (2 ETFs, 6 stocks, 2 crypto) with real logos.
+- 1Y / 3Y / 5Y of **adjusted close** history — splits and dividends accounted for.
+- Fixed-amount simulation rebased to the starting principal.
+- UI matched to the Walllet demo prototype, running on live data.
+
+## Stack
+
+| Concern | Choice |
+| --- | --- |
+| App framework | TanStack Start `1.168.60`, TanStack Router (file-based) |
+| Effect | `effect@3`, `@effect-atom/atom-react`, `@effect/rpc` |
+| Charts | Recharts 3 |
+| Components | shadcn on Base UI, light theme only |
+| Styling | Tailwind v4, theme tokens in `src/styles.css` |
+| Tooling | Oxlint + Oxfmt, bun `1.4.2` |
+
+## Getting started
 
 ```bash
 bun install
-bun --bun run dev
+bun run dev        # http://localhost:3000
 ```
 
-# Building For Production
+**Requires Node 22.** System Node 20 breaks `vite build` — rolldown needs
+`styleText`.
 
-To build this application for production:
+Copy `.env.example` to `.env` and add your keys:
 
 ```bash
-bun --bun run build
+ALPHAVANTAGE_API_KEY='...'
 ```
 
-## Styling
+## Data and quota
 
-This project uses [Tailwind CSS](https://tailwindcss.com/) for styling.
+Prices come from **Alpha Vantage**, which on the free tier allows **25 requests
+per day**. That constraint shaped the provider design:
 
-### Removing Tailwind CSS
+- **Weekly adjusted series only.** The free tier blocks `TIME_SERIES_DAILY_ADJUSTED`
+  and caps unadjusted daily data at 100 points; `TIME_SERIES_WEEKLY_ADJUSTED` is
+  free and carries genuine split/dividend adjustments.
+- **Full series cached for 12h per symbol**, so switching 1Y/3Y/5Y costs nothing.
+- **Requests spaced 1.25s apart**, since the free tier rejects bursts.
 
-If you prefer not to use Tailwind CSS:
-
-1. Remove the demo pages in `src/routes/demo/`
-2. Replace the Tailwind import in `src/styles.css` with your own styles
-3. Remove `tailwindcss()` from the plugins array in `vite.config.ts`
-4. Remove `@tailwindcss/vite` and `tailwindcss` from `package.json`
-
-## Linting & Formatting
-
-This project uses [oxlint](https://oxc.rs/docs/guide/usage/linter/) and [oxfmt](https://oxc.rs/docs/guide/usage/formatter/) for linting and formatting. Oxlint is configured in `.oxlintrc.json` and oxfmt in `.oxfmtrc.json`. The following scripts are available:
+**Iterating on the UI will burn the quota** — the cache does not survive HMR, so
+each server-side edit refetches all 10 symbols. Use the fixture provider:
 
 ```bash
-bun --bun run lint
-bun --bun run format
-bun --bun run check
+MARKET_PROVIDER=stub   # in .env
 ```
 
-## Deploy with Nitro
+`bun run logos` re-resolves the market logos. They are committed to
+`public/logos` with a `manifest.json`, so **no logo API is called at runtime**.
+The resolver is idempotent and reuses existing files.
 
-This project uses Nitro as a generic server adapter, so it can run on any Node-compatible host.
+## Scripts
 
-```bash
-npm run build
-node dist/server/index.mjs
+| Script | Purpose |
+| --- | --- |
+| `bun run dev` | Dev server on port 3000 |
+| `bun run build` | Production build to `.output/` |
+| `bun run preview` | Serve the production build |
+| `bun run lint` | Oxlint |
+| `bun run format` | Oxfmt, then Oxlint `--fix` |
+| `bun run check` | Oxfmt `--check` |
+| `bun run logos` | Re-resolve logo assets |
+| `bun run generate-routes` | Regenerate the route tree |
+
+> `bun run lint` and `run check` are red repo-wide because `.agents/` holds
+> third-party skill markdown. Scope them with `--ignore-pattern ".agents/**"`.
+
+## Architecture
+
+```
+src/api/                     domain schemas + RPC contract (shared client/server)
+src/routes/api/-lib/         provider adapter, service layer, RPC wiring
+src/routes/-index/           atoms, panel, chart, amount input
+src/components/ui/           shadcn/Base UI primitives
+scripts/resolve-logos.ts     build-time logo resolver (Effect + BunContext)
+public/logos/                committed logo assets + manifest
 ```
 
-The build output is a self-contained Node server. To deploy, push the `dist/` directory to your host (Render, Fly.io, your own VPS, etc.) and run the server command above.
+Two contracts are deliberately frozen — change them only with a reason:
 
-For host-specific presets (Vercel, Netlify, Cloudflare, AWS Lambda, etc.) and tuning, see https://v3.nitro.build/deploy.
+1. **The RPC surface is exactly two calls:** `market_list` and
+   `market_history({ id, period })`. There is no `get(id)`; the list already
+   carries full metadata.
+2. **`PricePoint.price` always means adjusted close.** The raw `close` field is
+   never silently substituted.
 
-## Routing
+Layering runs `AlphaVantageProvider → MarketsService → RPC → atoms → UI`, so the
+UI never sees a provider-specific shape. Provider errors are mapped to
+`MarketDataUnavailable` at the adapter boundary.
 
-This project uses [TanStack Router](https://tanstack.com/router) with file-based routing. Routes are managed as files in `src/routes`.
+## Status
 
-### Adding A Route
+Landed: brand palette and motion tokens, Recharts with gated draw-in, count-up
+figures, staggered panel reveal gated on first fetch, sliding period pill, mobile
+layout pass.
 
-To add a new route to your application just add a new file in the `./src/routes` directory.
+Open:
 
-TanStack will automatically generate the content of the route file for you.
-
-Now that you have two routes you can use a `Link` component to navigate between them.
-
-### Adding Links
-
-To use SPA (Single Page Application) navigation you will need to import the `Link` component from `@tanstack/react-router`.
-
-```tsx
-import { Link } from '@tanstack/react-router'
-```
-
-Then anywhere in your JSX you can use it like so:
-
-```tsx
-<Link to="/about">About</Link>
-```
-
-This will create a link that will navigate to the `/about` route.
-
-More information on the `Link` component can be found in the [Link documentation](https://tanstack.com/router/v1/docs/framework/react/api/router/linkComponent).
-
-### Using A Layout
-
-In the File Based Routing setup the layout is located in `src/routes/__root.tsx`. Anything you add to the root route will appear in all the routes. The route content will appear in the JSX where you render `{children}` in the `shellComponent`.
-
-Here is an example layout that includes a header:
-
-```tsx
-import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
-
-export const Route = createRootRoute({
-  head: () => ({
-    meta: [
-      { charSet: 'utf-8' },
-      { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-      { title: 'My App' },
-    ],
-  }),
-  shellComponent: ({ children }) => (
-    <html lang="en">
-      <head>
-        <HeadContent />
-      </head>
-      <body>
-        <header>
-          <nav>
-            <Link to="/">Home</Link>
-            <Link to="/about">About</Link>
-          </nav>
-        </header>
-        {children}
-        <Scripts />
-      </body>
-    </html>
-  ),
-})
-```
-
-More information on layouts can be found in the [Layouts documentation](https://tanstack.com/router/latest/docs/framework/react/guide/routing-concepts#layouts).
-
-## Server Functions
-
-TanStack Start provides server functions that allow you to write server-side code that seamlessly integrates with your client components.
-
-```tsx
-import { createServerFn } from '@tanstack/react-start'
-
-const getServerTime = createServerFn({
-  method: 'GET',
-}).handler(async () => {
-  return new Date().toISOString()
-})
-
-// Use in a component
-function MyComponent() {
-  const [time, setTime] = useState('')
-
-  useEffect(() => {
-    getServerTime().then(setTime)
-  }, [])
-
-  return <div>Server time: {time}</div>
-}
-```
-
-## API Routes
-
-You can create API routes by using the `server` property in your route definitions:
-
-```tsx
-import { createFileRoute } from '@tanstack/react-router'
-import { json } from '@tanstack/react-start'
-
-export const Route = createFileRoute('/api/hello')({
-  server: {
-    handlers: {
-      GET: () => json({ message: 'Hello, World!' }),
-    },
-  },
-})
-```
-
-## Data Fetching
-
-There are multiple ways to fetch data in your application. You can use TanStack Query to fetch data from a server. But you can also use the `loader` functionality built into TanStack Router to load the data for a route before it's rendered.
-
-For example:
-
-```tsx
-import { createFileRoute } from '@tanstack/react-router'
-
-export const Route = createFileRoute('/people')({
-  loader: async () => {
-    const response = await fetch('https://swapi.dev/api/people')
-    return response.json()
-  },
-  component: PeopleComponent,
-})
-
-function PeopleComponent() {
-  const data = Route.useLoaderData()
-  return (
-    <ul>
-      {data.results.map((person) => (
-        <li key={person.name}>{person.name}</li>
-      ))}
-    </ul>
-  )
-}
-```
-
-Loaders simplify your data fetching logic dramatically. Check out more information in the [Loader documentation](https://tanstack.com/router/latest/docs/framework/react/guide/data-loading#loader-parameters).
-
-# Learn More
-
-You can learn more about all of the offerings from TanStack in the [TanStack documentation](https://tanstack.com).
-
-For TanStack Start specific documentation, visit [TanStack Start](https://tanstack.com/start).
+- The full 10-market × 3-period matrix has not been run against live data — it is
+  blocked on the daily quota reset. The crypto weekly-series fix in particular is
+  confirmed against the raw API but not verified end to end.
+- The panel's SSR path always renders loaders, because only `markets` is
+  dehydrated into the document. Fine for a prototype, worth revisiting if this
+  ever ships.

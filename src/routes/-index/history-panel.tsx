@@ -41,8 +41,9 @@ const mediumDate = new Intl.DateTimeFormat('en-US', {
 const PERIOD_YEARS = { '1Y': 1, '3Y': 3, '5Y': 5 } as const
 const PERIODS = ['1Y', '3Y', '5Y'] as const
 
-/** Count-up budget for a deliberate change (market or period switch). */
-const SERIES_COUNT_MS = 600
+/** Count-up budget for a deliberate change (market or period switch). Kept in
+ * step with `DRAW_MS` so the curve and the figures land together. */
+const SERIES_COUNT_MS = 550
 /** Count-up budget while typing, so the figure keeps up with the hands. */
 const TYPING_COUNT_MS = 200
 
@@ -86,7 +87,7 @@ function MarketSelect({
           trigger renders the selected market itself. The `data-` variant
           deliberately mirrors the vendored default height so this control
           lands on the same 48px box as the other two in the row. */}
-      <SelectTrigger className="w-full min-w-56 justify-start gap-2 rounded-2xl border-border bg-surface data-[size=default]:h-12">
+      <SelectTrigger className="w-full min-w-56 justify-start gap-2 rounded-2xl border-border bg-card transition-[border-color,box-shadow,transform] duration-150 ease-out active:scale-[0.98] data-[size=default]:h-12">
         <SelectValue placeholder="Explore a market">
           {selected === undefined ? null : (
             <>
@@ -249,7 +250,7 @@ function Controls({
         <label className={label} htmlFor="investment-amount">
           If I had invested
         </label>
-        <div className="flex h-12 items-center gap-1 rounded-2xl border border-border bg-muted px-3 transition-[border-color,box-shadow] duration-150 ease-out focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/20">
+        <div className="flex h-12 items-center gap-1 rounded-2xl border border-border bg-card px-3 transition-[border-color,box-shadow] duration-150 ease-out focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/20">
           <span className="text-sm font-medium text-muted-foreground">USD</span>
           <AmountInput
             id="investment-amount"
@@ -258,7 +259,7 @@ function Controls({
             className="text-2xl"
           />
         </div>
-        <p className="text-xs text-muted-foreground">Make it your amount.</p>
+        <p className="text-xs text-slate-soft">Make it your amount.</p>
       </div>
 
       <div className="flex flex-col gap-2">
@@ -445,9 +446,9 @@ export function HistoryPanel() {
     <section
       id="simulator"
       data-revealed={revealed ? 'true' : 'false'}
-      className="bg-white scroll-mt-6 overflow-hidden rounded-4xl border border-border shadow-[0_18px_60px_-30px_rgb(49_68_68_0.22)]"
+      className="bg-white scroll-mt-6 overflow-hidden rounded-3xl border border-border shadow-[0_18px_60px_-30px_rgb(49_68_68_0.22)] min-[810px]:rounded-4xl"
     >
-      <div className="flex flex-col gap-6 p-5 md:p-6">
+      <div className="flex flex-col gap-6 p-4 min-[810px]:p-6">
         {Result.isFailure(markets) ? (
           <Alert>
             <AlertTitle>Couldn&rsquo;t load markets</AlertTitle>

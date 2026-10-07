@@ -70,64 +70,79 @@ const tickDate = new Intl.DateTimeFormat('en-US', {
 
 const toMs = (iso: string): number => Date.parse(`${iso}T00:00:00Z`)
 
-/** Long enough for the curve to land before the gate closes. */
-const DRAW_MS = 500
+/**
+ * One beat for everything a series change touches. The curve and the figures
+ * were on separate clocks (500ms vs 600ms), so the curve landed and the
+ * numbers kept travelling — which reads as unfinished rather than smooth.
+ * Keep this in step with `SERIES_COUNT_MS` in history-panel.tsx.
+ */
+const DRAW_MS = 550
 
 interface Row extends MarketsSchema.PricePoint {
   readonly ms: number
   readonly value: number
 }
 
-/** Evenly spaced x-axis labels, as data-key values (a category axis matches
- * `ticks` against the data, not against indexes). */
-const dateTicks = (rows: ReadonlyArray<Row>): ReadonlyArray<string> =>
-  [0, 0.25, 0.5, 0.75, 1].map(
-    (t) => rows[Math.round((rows.length - 1) * t)].date,
-  )
+/**
+ * Evenly spaced x-axis labels, as data-key values (a category axis matches
+ * `ticks` against the data, not against indexes). Narrow charts take three —
+ * first, middle, last — because the labels are fixed-width and five of them
+ * overlap long before Recharts' own gap logic notices.
+ */
+const dateTicks = (
+  rows: ReadonlyArray<Row>,
+  compact: boolean,
+): ReadonlyArray<string> => {
+  const stops = compact ? [0, 0.5, 1] : [0, 0.25, 0.5, 0.75, 1]
+  return stops.map((t) => rows[Math.round((rows.length - 1) * t)].date)
+}
 
 /**
  * X-axis tick renderer. The first and last labels anchor inward so neither is
  * clipped by the plot edge — the alternative was padding the axis, which
- * would pull the curve away from the panel's own edges. The middle labels are
- * dropped on a narrow chart because the dates are fixed-width and overlap
- * before Recharts' own gap logic notices.
+ * would pull the curve away from the panel's own edges. Font is the brand's
+ * faint tier: axis furniture, not something to read closely.
  */
 function ChartTick({
   x,
   y,
   payload,
   labels,
-  compact,
 }: {
   readonly x?: number
   readonly y?: number
   readonly payload?: { readonly value?: string }
   readonly labels: ReadonlyArray<string>
-  readonly compact: boolean
 }) {
   const value = payload?.value
   if (typeof x !== 'number' || typeof y !== 'number' || value === undefined) {
     return null
   }
 
-  const isFirst = value === labels[0]
-  const isLast = value === labels.at(-1)
-  const isQuarterly = labels.indexOf(value) % 2 === 1
-
-  if (compact && isQuarterly) return null
-
   return (
     <text
       x={x}
       y={y + 12}
-      textAnchor={isFirst ? 'start' : isLast ? 'end' : 'middle'}
-      fill="var(--muted-foreground)"
+      textAnchor={
+        value === labels[0]
+          ? 'start'
+          : value === labels.at(-1)
+            ? 'end'
+            : 'middle'
+      }
+      fill="var(--slate-faint)"
       fontSize={11}
     >
       {tickDate.format(toMs(value))}
     </text>
   )
 }
+
+/** Y-axis labels: three on a wide chart, the extremes only when narrow. */
+const valueTicks = (domain: readonly [number, number], compact: boolean) =>
+  compact
+    ? [domain[0], domain[1]]
+    : [domain[0], (domain[0] + domain[1]) / 2, domain[1]]
 
 export function HistoryChart({
   points,
@@ -198,12 +213,14 @@ export function HistoryChart({
   // A shorter series (period or market change) must not leave a stale cursor.
   useEffect(() => setCursor(undefined), [rows])
 
-  // Below this width the five date labels overlap, so drop to three.
+  // Below this width the five date labels overlap. Measured against the
+  // container, not the viewport: at 390px the chart is ~300px wide even
+  // though the viewport is 390, so a viewport test never fired.
   useEffect(() => {
     const element = containerRef.current
     if (element === null) return
     const observer = new ResizeObserver(([entry]) => {
-      setCompact(entry.contentRect.width < 420)
+      setCompact(entry.contentRect.width < 560)
     })
     observer.observe(element)
     return () => observer.disconnect()
@@ -227,10 +244,10 @@ export function HistoryChart({
     new Date(rows[0].ms),
   )} became ${usd.format(last.value)} as of ${longDate.format(new Date(last.ms))}.`
 
-  const tick = { fill: 'var(--muted-foreground)', fontSize: 11 }
+  const tick = { fill: 'var(--slate-faint)', fontSize: 11 }
 
   return (
-    <div className={cn('chart-enter flex flex-col', className)}>
+    <div className={cn('flex flex-col', className)}>
       <div className="relative h-60 w-full" ref={containerRef}>
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart
@@ -262,11 +279,11 @@ export function HistoryChart({
                 by real elapsed time and pull the first label out of view. */}
             <XAxis
               dataKey="date"
-              ticks={dateTicks(rows)}
+              ticks={dateTicks(rows, compact)}
               tick={
                 // First and last labels anchor inward so neither is clipped
                 // by the plot edge; the curve still spans the full width.
-                <ChartTick labels={dateTicks(rows)} compact={compact} />
+                <ChartTick labels={dateTicks(rows, compact)} />
               }
               axisLine={false}
               tickLine={false}
@@ -277,7 +294,7 @@ export function HistoryChart({
             <YAxis
               domain={domain}
               orientation="right"
-              ticks={[domain[0], (domain[0] + domain[1]) / 2, domain[1]]}
+              ticks={valueTicks(domain, compact)}
               tickFormatter={(v: number) => usdCompact.format(v)}
               tick={tick}
               axisLine={false}
