@@ -11,7 +11,7 @@ import {
   YAxis,
 } from 'recharts'
 import { cn } from 'cn'
-import { useReducedMotion } from '#/lib/use-count-up'
+import { useReducedMotion } from '#/lib/use-reduced-motion'
 import type * as MarketsSchema from '#/api/market-schema'
 
 /**

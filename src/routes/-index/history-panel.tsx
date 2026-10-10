@@ -1,9 +1,9 @@
 import { Result, useAtomSet, useAtomValue } from '@effect-atom/atom-react'
+import NumberFlow, { NumberFlowGroup, useCanAnimate } from '@number-flow/react'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type * as MarketsSchema from '#/api/market-schema'
 import { simulate, withinPeriod } from '#/lib/simulation'
 import type { SimulationResult } from '#/lib/simulation'
-import { useCountUp, useReducedMotion } from '#/lib/use-count-up'
 import { Alert, AlertDescription, AlertTitle } from '#/components/ui/alert'
 import { Avatar, AvatarFallback, AvatarImage } from '#/components/ui/avatar'
 import { Loader } from '#/components/ui/loader'
@@ -30,6 +30,23 @@ const usd = new Intl.NumberFormat('en-US', {
   currency: 'USD',
   minimumFractionDigits: 2,
 })
+
+/**
+ * The exact shape `usd` produces, handed to NumberFlow so the animated digits
+ * are byte-identical to the static ones (and to the chart's axis formatter).
+ */
+const usdFormat = {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+} satisfies Intl.NumberFormatOptions
+
+/** Matches `percent.toFixed(2)` on the non-animated path. */
+const percentFormat = {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+} satisfies Intl.NumberFormatOptions
 
 const mediumDate = new Intl.DateTimeFormat('en-US', {
   month: 'short',
@@ -273,18 +290,21 @@ function Controls({
 /**
  * What the fixed amount could be worth.
  *
- * The three figures count up together. They share one progress value so the
- * total, the percentage and the profit never disagree mid-flight — three
- * independent tweens would drift apart and read as three different numbers.
+ * The three figures are NumberFlow. Two reasons that is the right call over a
+ * hand-rolled rAF loop: NumberFlow interrupts from whatever is currently
+ * rendered, which is exactly what the amount field needs (a keystroke must not
+ * send the figure back to zero), and it takes a real `cubic-bezier` where the
+ * old loop had to solve one by bisection.
  *
- * Duration follows the cause of the change: a market or period switch is a
- * deliberate action that deserves the full 600ms, while a keystroke in the
- * amount field gets 200ms so the figure keeps up with the hands. The loop
- * always resumes from the number currently on screen (see `useCountUp`), which
- * is what stops typing from making the value jump back to zero each time.
+ * `NumberFlowGroup` keeps the three in lockstep — three independent tweens
+ * would drift apart mid-flight and read as three different numbers.
  *
- * Colour is deliberately not animated: the sign can flip, and a colour that
- * tweens through grey in between looks like "no result".
+ * Duration still follows the cause: a market or period switch gets the full
+ * beat, a keystroke gets a short one. The curve is `--ease-out` verbatim.
+ *
+ * Sign and colour are deliberately *not* animated: the sign can flip, and a
+ * sign that spins through the wrong direction mid-flight reads as a bug. Both
+ * follow the target instantly while NumberFlow moves the digits.
  *
  * While a refetch is in flight the previous figure stays put rather than
  * dropping to a placeholder — replacing it and back is what read as a blink.
@@ -302,22 +322,21 @@ function Worth({
   durationMs: number
   animate: boolean
 }) {
-  const target = result?.value ?? 0
-  const percent = result?.percent ?? 0
-  const profit = result?.profit ?? 0
-
-  const shownValue = useCountUp(target, durationMs, { enabled: animate })
-  const shownPercent = useCountUp(percent, durationMs, { enabled: animate })
-  const shownProfit = useCountUp(Math.abs(profit), durationMs, {
-    enabled: animate,
-  })
-
   const tone =
     result === undefined
       ? 'text-muted-foreground'
       : result.profit >= 0
         ? 'text-chart-2'
         : 'text-chart-3'
+
+  // One timing object for all three; the group syncs them anyway.
+  const timing = {
+    duration: durationMs,
+    easing: 'cubic-bezier(0.23, 1, 0.32, 1)',
+  }
+
+  const percent = result?.percent
+  const profit = result?.profit
 
   return (
     <div className="reveal-item reveal-item-2 flex flex-col gap-2">
@@ -336,17 +355,48 @@ function Worth({
             tone,
           )}
         >
-          {result === undefined ? '—' : usd.format(shownValue)}
+          {result === undefined ? (
+            '—'
+          ) : (
+            <NumberFlowGroup>
+              <NumberFlow
+                value={result.value}
+                locales="en-US"
+                format={usdFormat}
+                transformTiming={timing}
+                animated={animate}
+                // The amount field changes this constantly, so the docs'
+                // guidance for frequently-changing numbers applies here.
+                willChange
+              />
+            </NumberFlowGroup>
+          )}
         </span>
       )}
       {result === undefined ? null : (
         <div className="flex flex-wrap items-center gap-2">
           <span className={cn('text-lg font-bold tabular-nums', tone)}>
-            {shownPercent >= 0 ? '+' : ''}
-            {shownPercent.toFixed(2)}%
+            {percent !== undefined && percent >= 0 ? '+' : ''}
+            <NumberFlow
+              value={percent ?? 0}
+              locales="en-US"
+              format={percentFormat}
+              suffix="%"
+              transformTiming={timing}
+              animated={animate}
+            />
           </span>
           <span className="text-sm text-muted-foreground">
-            {usd.format(shownProfit)} {result.profit >= 0 ? 'gained' : 'lost'}
+            {profit === undefined ? null : (
+              <NumberFlow
+                value={Math.abs(profit)}
+                locales="en-US"
+                format={usdFormat}
+                transformTiming={timing}
+                animated={animate}
+              />
+            )}{' '}
+            {profit !== undefined && profit >= 0 ? 'gained' : 'lost'}
           </span>
         </div>
       )}
@@ -362,7 +412,9 @@ export function HistoryPanel() {
   const history = useAtomValue(marketHistoryAtom)
   const markets = useAtomValue(marketsAtom)
   const [principal, setPrincipal] = useState(1000)
-  const reducedMotion = useReducedMotion()
+  // Feature-detects the browser as well as the motion preference, so the
+  // figures degrade to static text rather than half-animating.
+  const canAnimate = useCanAnimate()
 
   const marketList = Result.isSuccess(markets) ? markets.value : undefined
   const market =
@@ -492,7 +544,7 @@ export function HistoryPanel() {
           period={period}
           loading={loading}
           durationMs={durationMs}
-          animate={!reducedMotion && revealed}
+          animate={canAnimate && revealed}
         />
 
         <div className="reveal-item reveal-item-3 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 border-t border-border pt-4">
